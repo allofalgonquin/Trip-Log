@@ -1,6 +1,5 @@
-const CACHE = 'algonquin-log-v1';
-const PRECACHE = ['/algonquin-log/', '/algonquin-log/index.html', '/algonquin-log/manifest.json'];
-
+const CACHE = 'algonquin-trip-log-v1';
+const PRECACHE = ['/trip-log/', '/trip-log/index.html', '/trip-log/manifest.json'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(cache => cache.addAll(PRECACHE)).then(() => self.skipWaiting()));
 });
@@ -15,6 +14,6 @@ self.addEventListener('fetch', e => {
       const clone = response.clone();
       caches.open(CACHE).then(cache => cache.put(e.request, clone));
       return response;
-    }).catch(() => { if (e.request.mode === 'navigate') return caches.match('/algonquin-log/index.html'); });
+    }).catch(() => { if (e.request.mode === 'navigate') return caches.match('/trip-log/index.html'); });
   }));
 });

@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Algonquin Log">
 <meta name="theme-color" content="#1a2e1a">
-<link rel="manifest" href="/algonquin-log/manifest.json">
+<link rel="manifest" href="/trip-log/manifest.json">
 <title>Algonquin Trip Log</title>
 <style>
   :root{--bark:#2c1f0e;--moss:#1a2e1a;--pine:#2d4a2d;--lichen:#5a7a4a;--birch:#e8e0cc;--cream:#f5f0e8;--amber:#c17f3a;--ember:#d64a1a;--water:#3a6b7a;--mist:#8aab9a;--shadow:rgba(0,0,0,0.4);}
@@ -118,6 +118,7 @@
     <button class="tab active" onclick="switchTab('log')">＋ Campsite</button>
     <button class="tab" onclick="switchTab('reports')">Campsites</button>
     <button class="tab" onclick="switchTab('trips')">Trips</button>
+    <button class="tab" onclick="switchTab('settings')">Settings</button>
   </div>
 
   <!-- CAMPSITE FORM -->
@@ -167,6 +168,65 @@
   <!-- TRIP DETAIL -->
   <div class="view" id="view-trip-detail"><div id="trip-detail-content"></div></div>
 </div>
+
+
+  <!-- SETTINGS VIEW -->
+  <div class="view" id="view-settings">
+    <div class="section-label" style="margin-top:8px">API Key</div>
+    <div class="field">
+      <label>Anthropic API Key</label>
+      <input type="password" id="api-key-input" placeholder="sk-ant-api03-…">
+      <div style="font-size:11px;color:var(--mist);margin-top:6px;line-height:1.5">Stored locally on your device only. Required for AI summaries. Only works when you have internet.</div>
+    </div>
+    <button class="btn-primary" onclick="saveApiKey()" style="margin-top:16px">💾 Save API Key</button>
+    <div class="section-label">About</div>
+    <div class="detail-block">
+      <div class="detail-block-label">How AI Summaries Work</div>
+      <div class="detail-block-value" style="font-size:13px;line-height:1.6">When you have internet access, tap "Generate Summary" on any campsite report or trip. Choose Facebook post style or personal journal style. The summary is generated using your API key and shown for you to copy and share.</div>
+    </div>
+  </div>
+
+  <!-- AI SUMMARY MODAL -->
+  <div class="modal-overlay" id="modal-ai-summary">
+    <div class="modal-sheet">
+      <div class="modal-title"><span>AI Summary</span><button class="modal-close" onclick="closeModal('modal-ai-summary')">×</button></div>
+      <div class="field">
+        <label>Summary Style</label>
+        <div class="pill-row">
+          <button class="pill" id="style-facebook" onclick="selectSummaryStyle('facebook')">📣 Facebook Post</button>
+          <button class="pill" id="style-journal" onclick="selectSummaryStyle('journal')">📓 Personal Journal</button>
+        </div>
+      </div>
+      <button class="btn-primary" id="generate-btn" onclick="generateSummary()" style="margin-top:16px">✨ Generate</button>
+      <div id="ai-result" style="margin-top:20px;display:none">
+        <div class="section-label">Generated Summary</div>
+        <div id="ai-result-text" style="background:rgba(255,255,255,.04);border:1px solid rgba(90,122,74,.2);border-radius:8px;padding:14px;font-size:14px;line-height:1.7;color:var(--birch);white-space:pre-wrap;margin-bottom:12px"></div>
+        <button class="btn-share" style="width:100%" onclick="copySummary()">📋 Copy Summary</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- SUBMIT MODAL -->
+  <div class="modal-overlay" id="modal-submit">
+    <div class="modal-sheet">
+      <div class="modal-title"><span>Submit to All of Algonquin</span><button class="modal-close" onclick="closeModal('modal-submit')">×</button></div>
+      <div style="font-size:13px;color:var(--mist);line-height:1.6;margin-bottom:16px">This will send your full campsite report, AI summary, and photos to the All of Algonquin team. Requires internet connection.</div>
+      <div class="field">
+        <label>Your Name (optional)</label>
+        <input type="text" id="submit-name" placeholder="e.g. Drew">
+      </div>
+      <div class="field">
+        <label>AI Summary Style</label>
+        <div class="pill-row">
+          <button class="pill" id="submit-style-facebook" onclick="selectSubmitStyle('facebook')">📣 Facebook Post</button>
+          <button class="pill" id="submit-style-journal" onclick="selectSubmitStyle('journal')">📓 Journal</button>
+        </div>
+      </div>
+      <div id="submit-status" style="display:none;margin-top:12px;padding:10px 14px;border-radius:8px;font-size:13px;line-height:1.5"></div>
+      <button class="btn-primary" id="submit-btn" onclick="submitReport()">📤 Submit Report</button>
+    </div>
+  </div>
 
 <!-- LIGHTBOX -->
 <div class="lightbox" id="lightbox" onclick="closeLightbox()">
@@ -252,11 +312,12 @@ function handlePill(p,store){
 
 // TABS
 function switchTab(tab){
-  ["log","reports","trips"].forEach((n,i)=>document.querySelectorAll(".tab")[i].classList.toggle("active",n===tab));
+  ["log","reports","trips","settings"].forEach((n,i)=>document.querySelectorAll(".tab")[i].classList.toggle("active",n===tab));
   document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
   document.getElementById("view-"+tab).classList.add("active");
   if(tab==="reports")renderReportsList();
   if(tab==="trips")renderTripsList();
+  if(tab==="settings")loadApiKeyField();
 }
 
 // MODALS
@@ -355,7 +416,7 @@ function showDetail(id){
     ${rest.map(([l,v])=>`<div class="detail-block"><div class="detail-block-label">${l}</div><div class="detail-block-value">${v}</div></div>`).join("")}
     ${r.notes?`<div class="detail-block"><div class="detail-block-label">Notes</div><div class="detail-block-value" style="white-space:pre-wrap">${r.notes}</div></div>`:""}
     ${r.photos?.length?`<div class="section-label" style="margin-top:16px">Photos</div><div class="detail-photo-grid">${r.photos.map((src,i)=>`<div class="detail-photo" onclick="openLightboxFromDetail(${i})"><img src="${src}"></div>`).join("")}</div>`:""}
-    <div class="share-row"><button class="btn-share" onclick="copyReport()">📋 Copy Report</button><button class="btn-delete" onclick="deleteReport('${r.id}')">🗑</button></div>`;
+    <div class="share-row"><button class="btn-share" onclick="copyReport()">📋 Copy Report</button><button class="btn-share" style="background:rgba(90,122,74,.2);border-color:rgba(90,122,74,.4);color:var(--mist)" onclick="openAiModal('campsite','${r.id}')">✨ AI</button><button class="btn-share" style="background:rgba(58,107,122,.2);border-color:rgba(58,107,122,.4);color:#8ac8d8" onclick="openSubmitModal('${r.id}')">📤 Submit</button><button class="btn-delete" onclick="deleteReport('${r.id}')">🗑</button></div>\`;
 }
 
 function backToReports(){
@@ -451,6 +512,7 @@ function renderTripDetail(trip){
     <button class="btn-outline-amber" onclick="openNewDayModal('${trip.id}')">＋ Add Day</button>
     <div class="share-row" style="margin-top:16px">
       <button class="btn-share" onclick="editTrip('${trip.id}')">✏️ Edit Trip</button>
+      <button class="btn-share" style="background:rgba(90,122,74,.2);border-color:rgba(90,122,74,.4);color:var(--mist)" onclick="openAiModal('trip','${trip.id}')">✨ AI</button>
       <button class="btn-delete" onclick="deleteTrip('${trip.id}')">🗑</button>
     </div>`;
 }
@@ -535,8 +597,270 @@ function formatDate(d){if(!d)return"";return new Date(d+"T12:00:00").toLocaleDat
 let toastTimer;
 function showToast(msg){const t=document.getElementById("toast");t.textContent=msg;t.classList.add("show");clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove("show"),2500);}
 </script>
+
+
+// SUBMISSION
+const WEBHOOK_URL = "https://hook.us2.make.com/2bem9wtytlx5imj8sl1gye475ux5w6ky";
+let submitReportId = null;
+let submitStyle = "facebook";
+
+function openSubmitModal(reportId) {
+  submitReportId = reportId;
+  submitStyle = "facebook";
+  document.getElementById("submit-style-facebook").classList.add("on");
+  document.getElementById("submit-style-journal").classList.remove("on");
+  document.getElementById("submit-name").value = localStorage.getItem("submitter_name") || "";
+  document.getElementById("submit-status").style.display = "none";
+  document.getElementById("submit-btn").textContent = "📤 Submit Report";
+  document.getElementById("submit-btn").disabled = false;
+  openModal("modal-submit");
+}
+
+function selectSubmitStyle(style) {
+  submitStyle = style;
+  document.getElementById("submit-style-facebook").classList.toggle("on", style === "facebook");
+  document.getElementById("submit-style-journal").classList.toggle("on", style === "journal");
+}
+
+async function submitReport() {
+  const r = getReports().find(x => x.id === submitReportId);
+  if (!r) return;
+
+  const name = document.getElementById("submit-name").value.trim();
+  if (name) localStorage.setItem("submitter_name", name);
+
+  const btn = document.getElementById("submit-btn");
+  const statusEl = document.getElementById("submit-status");
+  btn.textContent = "⏳ Generating summary…";
+  btn.disabled = true;
+  statusEl.style.display = "block";
+  statusEl.style.background = "rgba(255,255,255,.04)";
+  statusEl.style.color = "var(--mist)";
+  statusEl.textContent = "Generating AI summary…";
+
+  // Generate AI summary first if API key exists
+  let aiSummary = "";
+  const apiKey = localStorage.getItem("anthropic_api_key");
+  if (apiKey) {
+    try {
+      const prompt = buildCampsitePrompt(r, submitStyle);
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {"Content-Type":"application/json","x-api-key":apiKey,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+        body: JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:1024,messages:[{role:"user",content:prompt}]})
+      });
+      const data = await res.json();
+      if (data.content) aiSummary = data.content[0].text;
+    } catch(e) {
+      aiSummary = "Could not generate AI summary.";
+    }
+  }
+
+  btn.textContent = "⏳ Sending…";
+  statusEl.textContent = "Sending to All of Algonquin…";
+
+  // Build payload
+  const payload = {
+    submittedAt: new Date().toISOString(),
+    submitterName: name || "Anonymous",
+    summaryStyle: submitStyle,
+    aiSummary,
+    lake: r.lake,
+    site: r.site || "",
+    date: formatDate(r.date),
+    party: r.party || "",
+    rating: r.rating || "",
+    tentpad: r.tentpad || "",
+    privacy: r.privacy || "",
+    shade: r.shade || "",
+    terrain: r.terrain || "",
+    firepit: r.firepit || "",
+    wood: r.wood || "",
+    water: r.water || "",
+    landing: r.landing || "",
+    swim: r.swim || "",
+    thunderbox: r.thunderbox || "",
+    weather: r.weather || "",
+    bugs: r.bugs || "",
+    wildlife: Array.isArray(r.wildlife) ? r.wildlife.join(", ") : (r.wildlife || ""),
+    wouldReturn: r.return || "",
+    notes: r.notes || "",
+    photoCount: r.photos ? r.photos.length : 0,
+    photos: r.photos || [],
+  };
+
+  try {
+    const res = await fetch(WEBHOOK_URL, {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify(payload)
+    });
+    if (res.ok) {
+      statusEl.style.background = "rgba(90,122,74,.2)";
+      statusEl.style.color = "var(--mist)";
+      statusEl.textContent = "✓ Submitted successfully! Thank you for contributing to All of Algonquin.";
+      btn.textContent = "✓ Submitted";
+      // Mark report as submitted
+      const reports = getReports();
+      const idx = reports.findIndex(x => x.id === submitReportId);
+      if (idx > -1) { reports[idx].submitted = true; saveReports(reports); }
+    } else {
+      throw new Error("Server error " + res.status);
+    }
+  } catch(e) {
+    statusEl.style.background = "rgba(214,74,26,.12)";
+    statusEl.style.color = "#e88a6a";
+    statusEl.textContent = "✗ Failed to submit. Check your internet connection and try again.";
+    btn.textContent = "📤 Try Again";
+    btn.disabled = false;
+  }
+}
+
+// SETTINGS & API KEY
+function saveApiKey(){
+  const key=document.getElementById("api-key-input").value.trim();
+  if(!key){showToast("Please enter your API key");return;}
+  localStorage.setItem("anthropic_api_key",key);
+  showToast("✓ API key saved");
+}
+function loadApiKeyField(){
+  const key=localStorage.getItem("anthropic_api_key")||"";
+  document.getElementById("api-key-input").value=key;
+}
+
+// AI SUMMARY
+let aiContext={type:null,id:null};
+let summaryStyle="facebook";
+
+function openAiModal(type,id){
+  const key=localStorage.getItem("anthropic_api_key");
+  if(!key){showToast("Add your API key in Settings first");switchTab("settings");return;}
+  aiContext={type,id};
+  summaryStyle="facebook";
+  document.getElementById("style-facebook").classList.add("on");
+  document.getElementById("style-journal").classList.remove("on");
+  document.getElementById("ai-result").style.display="none";
+  document.getElementById("ai-result-text").textContent="";
+  document.getElementById("generate-btn").textContent="✨ Generate";
+  document.getElementById("generate-btn").disabled=false;
+  openModal("modal-ai-summary");
+}
+
+function selectSummaryStyle(style){
+  summaryStyle=style;
+  document.getElementById("style-facebook").classList.toggle("on",style==="facebook");
+  document.getElementById("style-journal").classList.toggle("on",style==="journal");
+}
+
+function buildCampsitePrompt(r,style){
+  const facts=[
+    "Lake/Location: "+r.lake+(r.site?" - "+r.site:""),
+    "Date: "+formatDate(r.date),
+    r.party?"Party size: "+r.party:null,
+    r.rating?"Rating: "+r.rating+"/5":null,
+    r.tentpad?"Tent pad: "+r.tentpad:null,
+    r.privacy?"Privacy: "+r.privacy:null,
+    r.shade?"Shade: "+r.shade:null,
+    r.terrain?"Terrain: "+r.terrain:null,
+    r.firepit?"Fire pit: "+r.firepit:null,
+    r.wood?"Firewood: "+r.wood:null,
+    r.water?"Water source: "+r.water:null,
+    r.landing?"Canoe landing: "+r.landing:null,
+    r.swim?"Swimability: "+r.swim:null,
+    r.thunderbox?"Thunderbox: "+r.thunderbox:null,
+    r.weather?"Weather: "+r.weather:null,
+    r.bugs?"Bugs: "+r.bugs:null,
+    r.wildlife?"Wildlife: "+(Array.isArray(r.wildlife)?r.wildlife.join(", "):r.wildlife):null,
+    r.return?"Would return: "+r.return:null,
+    r.notes?"Notes: "+r.notes:null,
+  ].filter(Boolean).join("\n");
+  if(style==="facebook"){
+    return "You are writing a campsite review for the Facebook group 'All of Algonquin', a community of Algonquin Park paddlers and campers. Write an engaging, friendly, and informative post based on these field notes. Use a warm, knowledgeable tone. Include practical tips. 2-3 paragraphs. No hashtags.\n\nField notes:\n"+facts;
+  } else {
+    return "Write a personal journal entry about this Algonquin campsite stay. Warm, reflective, first-person tone. Capture the atmosphere and practical details. 2-3 paragraphs.\n\nField notes:\n"+facts;
+  }
+}
+
+function buildTripPrompt(trip,style){
+  const reports=getReports();
+  const days=(trip.days||[]).sort((a,b)=>a.date>b.date?1:-1);
+  let facts="Trip: "+trip.name+"\n";
+  if(trip.start)facts+="Dates: "+formatDate(trip.start)+(trip.end&&trip.end!==trip.start?" to "+formatDate(trip.end):"")+"\n";
+  if(trip.route)facts+="Route: "+trip.route+"\n";
+  if(trip.party)facts+="Party: "+trip.party+"\n";
+  if(trip.weather)facts+="Weather summary: "+trip.weather+"\n";
+  if(trip.highlights)facts+="Highlights: "+trip.highlights+"\n";
+  if(trip.notes)facts+="Notes: "+trip.notes+"\n";
+  if(days.length){
+    facts+="\nDay by day:\n";
+    days.forEach(d=>{
+      facts+="- "+(d.label||formatDate(d.date))+": ";
+      if(d.lakes)facts+=d.lakes+". ";
+      if(d.portages)facts+=d.portages+". ";
+      if(d.distance)facts+=d.distance+"km. ";
+      if(d.weather)facts+=d.weather+". ";
+      if(d.highlights)facts+="Highlight: "+d.highlights+". ";
+      if(d.notes)facts+=d.notes;
+      const linked=d.campsiteId?reports.find(r=>r.id===d.campsiteId):null;
+      if(linked)facts+=" Camped at "+linked.lake+(linked.site?" site "+linked.site:"")+(linked.rating?" ("+linked.rating+"/5)":".")+".";
+      facts+="\n";
+    });
+  }
+  if(style==="facebook"){
+    return "You are writing a trip report for the Facebook group 'All of Algonquin', a community of Algonquin Park paddlers and campers. Write an engaging, detailed trip report based on these field notes. Friendly, informative tone. Include route details, conditions, highlights. 3-4 paragraphs. No hashtags.\n\nField notes:\n"+facts;
+  } else {
+    return "Write a personal journal summary of this Algonquin canoe trip. First-person, reflective, captures the journey and atmosphere. 3-4 paragraphs.\n\nField notes:\n"+facts;
+  }
+}
+
+async function generateSummary(){
+  const key=localStorage.getItem("anthropic_api_key");
+  if(!key){showToast("No API key found");return;}
+  const btn=document.getElementById("generate-btn");
+  btn.textContent="⏳ Generating…";
+  btn.disabled=true;
+  document.getElementById("ai-result").style.display="none";
+
+  let prompt="";
+  if(aiContext.type==="campsite"){
+    const r=getReports().find(x=>x.id===aiContext.id);
+    if(!r){showToast("Report not found");btn.textContent="✨ Generate";btn.disabled=false;return;}
+    prompt=buildCampsitePrompt(r,summaryStyle);
+  } else {
+    const trip=getTrips().find(t=>t.id===aiContext.id);
+    if(!trip){showToast("Trip not found");btn.textContent="✨ Generate";btn.disabled=false;return;}
+    prompt=buildTripPrompt(trip,summaryStyle);
+  }
+
+  try {
+    const response=await fetch("https://api.anthropic.com/v1/messages",{
+      method:"POST",
+      headers:{"Content-Type":"application/json","x-api-key":key,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+      body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:1024,messages:[{role:"user",content:prompt}]})
+    });
+    const data=await response.json();
+    if(data.error){showToast("API error: "+data.error.message);btn.textContent="✨ Generate";btn.disabled=false;return;}
+    const text=data.content[0].text;
+    document.getElementById("ai-result-text").textContent=text;
+    document.getElementById("ai-result").style.display="block";
+    btn.textContent="✨ Regenerate";
+    btn.disabled=false;
+  } catch(err){
+    showToast("Error: "+err.message);
+    btn.textContent="✨ Generate";
+    btn.disabled=false;
+  }
+}
+
+function copySummary(){
+  const text=document.getElementById("ai-result-text").textContent;
+  navigator.clipboard.writeText(text).then(()=>showToast("✓ Copied")).catch(()=>{
+    const ta=document.createElement("textarea");ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand("copy");document.body.removeChild(ta);showToast("✓ Copied");
+  });
+}
+
 <script>
-if("serviceWorker"in navigator){window.addEventListener("load",()=>{navigator.serviceWorker.register("/algonquin-log/sw.js",{scope:"/algonquin-log/"}).then(()=>console.log("Offline ready ✓")).catch(err=>console.log("SW failed:",err));});}
+if("serviceWorker"in navigator){window.addEventListener("load",()=>{navigator.serviceWorker.register("/trip-log/sw.js",{scope:"/trip-log/"}).then(()=>console.log("Offline ready ✓")).catch(err=>console.log("SW failed:",err));});}
 </script>
 </body>
 </html>
