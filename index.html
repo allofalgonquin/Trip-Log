@@ -205,29 +205,6 @@
       </div>
     </div>
   </div>
-
-
-  <!-- SUBMIT MODAL -->
-  <div class="modal-overlay" id="modal-submit">
-    <div class="modal-sheet">
-      <div class="modal-title"><span>Submit to All of Algonquin</span><button class="modal-close" onclick="closeModal('modal-submit')">×</button></div>
-      <div style="font-size:13px;color:var(--mist);line-height:1.6;margin-bottom:16px">This will send your full campsite report, AI summary, and photos to the All of Algonquin team. Requires internet connection.</div>
-      <div class="field">
-        <label>Your Name (optional)</label>
-        <input type="text" id="submit-name" placeholder="e.g. Drew">
-      </div>
-      <div class="field">
-        <label>AI Summary Style</label>
-        <div class="pill-row">
-          <button class="pill" id="submit-style-facebook" onclick="selectSubmitStyle('facebook')">📣 Facebook Post</button>
-          <button class="pill" id="submit-style-journal" onclick="selectSubmitStyle('journal')">📓 Journal</button>
-        </div>
-      </div>
-      <div id="submit-status" style="display:none;margin-top:12px;padding:10px 14px;border-radius:8px;font-size:13px;line-height:1.5"></div>
-      <button class="btn-primary" id="submit-btn" onclick="submitReport()">📤 Submit Report</button>
-    </div>
-  </div>
-
 <!-- LIGHTBOX -->
 <div class="lightbox" id="lightbox" onclick="closeLightbox()">
   <button class="lightbox-close" onclick="closeLightbox()">×</button>
@@ -416,7 +393,7 @@ function showDetail(id){
     ${rest.map(([l,v])=>`<div class="detail-block"><div class="detail-block-label">${l}</div><div class="detail-block-value">${v}</div></div>`).join("")}
     ${r.notes?`<div class="detail-block"><div class="detail-block-label">Notes</div><div class="detail-block-value" style="white-space:pre-wrap">${r.notes}</div></div>`:""}
     ${r.photos?.length?`<div class="section-label" style="margin-top:16px">Photos</div><div class="detail-photo-grid">${r.photos.map((src,i)=>`<div class="detail-photo" onclick="openLightboxFromDetail(${i})"><img src="${src}"></div>`).join("")}</div>`:""}
-    <div class="share-row"><button class="btn-share" onclick="copyReport()">📋 Copy Report</button><button class="btn-share" style="background:rgba(90,122,74,.2);border-color:rgba(90,122,74,.4);color:var(--mist)" onclick="openAiModal('campsite','${r.id}')">✨ AI</button><button class="btn-share" style="background:rgba(58,107,122,.2);border-color:rgba(58,107,122,.4);color:#8ac8d8" onclick="openSubmitModal('${r.id}')">📤 Submit</button><button class="btn-delete" onclick="deleteReport('${r.id}')">🗑</button></div>\`;
+    <div class="share-row"><button class="btn-share" onclick="copyReport()">📋 Copy Report</button><button class="btn-share" style="background:rgba(90,122,74,.2);border-color:rgba(90,122,74,.4);color:var(--mist)" onclick="openAiModal('campsite','${r.id}')">✨ AI</button><button class="btn-delete" onclick="deleteReport('${r.id}')">🗑</button></div>\`;
 }
 
 function backToReports(){
@@ -598,123 +575,6 @@ let toastTimer;
 function showToast(msg){const t=document.getElementById("toast");t.textContent=msg;t.classList.add("show");clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove("show"),2500);}
 </script>
 
-
-// SUBMISSION
-const WEBHOOK_URL = "https://hook.us2.make.com/2bem9wtytlx5imj8sl1gye475ux5w6ky";
-let submitReportId = null;
-let submitStyle = "facebook";
-
-function openSubmitModal(reportId) {
-  submitReportId = reportId;
-  submitStyle = "facebook";
-  document.getElementById("submit-style-facebook").classList.add("on");
-  document.getElementById("submit-style-journal").classList.remove("on");
-  document.getElementById("submit-name").value = localStorage.getItem("submitter_name") || "";
-  document.getElementById("submit-status").style.display = "none";
-  document.getElementById("submit-btn").textContent = "📤 Submit Report";
-  document.getElementById("submit-btn").disabled = false;
-  openModal("modal-submit");
-}
-
-function selectSubmitStyle(style) {
-  submitStyle = style;
-  document.getElementById("submit-style-facebook").classList.toggle("on", style === "facebook");
-  document.getElementById("submit-style-journal").classList.toggle("on", style === "journal");
-}
-
-async function submitReport() {
-  const r = getReports().find(x => x.id === submitReportId);
-  if (!r) return;
-
-  const name = document.getElementById("submit-name").value.trim();
-  if (name) localStorage.setItem("submitter_name", name);
-
-  const btn = document.getElementById("submit-btn");
-  const statusEl = document.getElementById("submit-status");
-  btn.textContent = "⏳ Generating summary…";
-  btn.disabled = true;
-  statusEl.style.display = "block";
-  statusEl.style.background = "rgba(255,255,255,.04)";
-  statusEl.style.color = "var(--mist)";
-  statusEl.textContent = "Generating AI summary…";
-
-  // Generate AI summary first if API key exists
-  let aiSummary = "";
-  const apiKey = localStorage.getItem("anthropic_api_key");
-  if (apiKey) {
-    try {
-      const prompt = buildCampsitePrompt(r, submitStyle);
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {"Content-Type":"application/json","x-api-key":apiKey,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
-        body: JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:1024,messages:[{role:"user",content:prompt}]})
-      });
-      const data = await res.json();
-      if (data.content) aiSummary = data.content[0].text;
-    } catch(e) {
-      aiSummary = "Could not generate AI summary.";
-    }
-  }
-
-  btn.textContent = "⏳ Sending…";
-  statusEl.textContent = "Sending to All of Algonquin…";
-
-  // Build payload
-  const payload = {
-    submittedAt: new Date().toISOString(),
-    submitterName: name || "Anonymous",
-    summaryStyle: submitStyle,
-    aiSummary,
-    lake: r.lake,
-    site: r.site || "",
-    date: formatDate(r.date),
-    party: r.party || "",
-    rating: r.rating || "",
-    tentpad: r.tentpad || "",
-    privacy: r.privacy || "",
-    shade: r.shade || "",
-    terrain: r.terrain || "",
-    firepit: r.firepit || "",
-    wood: r.wood || "",
-    water: r.water || "",
-    landing: r.landing || "",
-    swim: r.swim || "",
-    thunderbox: r.thunderbox || "",
-    weather: r.weather || "",
-    bugs: r.bugs || "",
-    wildlife: Array.isArray(r.wildlife) ? r.wildlife.join(", ") : (r.wildlife || ""),
-    wouldReturn: r.return || "",
-    notes: r.notes || "",
-    photoCount: r.photos ? r.photos.length : 0,
-    photos: r.photos || [],
-  };
-
-  try {
-    const res = await fetch(WEBHOOK_URL, {
-      method: "POST",
-      headers: {"Content-Type":"application/json"},
-      body: JSON.stringify(payload)
-    });
-    if (res.ok) {
-      statusEl.style.background = "rgba(90,122,74,.2)";
-      statusEl.style.color = "var(--mist)";
-      statusEl.textContent = "✓ Submitted successfully! Thank you for contributing to All of Algonquin.";
-      btn.textContent = "✓ Submitted";
-      // Mark report as submitted
-      const reports = getReports();
-      const idx = reports.findIndex(x => x.id === submitReportId);
-      if (idx > -1) { reports[idx].submitted = true; saveReports(reports); }
-    } else {
-      throw new Error("Server error " + res.status);
-    }
-  } catch(e) {
-    statusEl.style.background = "rgba(214,74,26,.12)";
-    statusEl.style.color = "#e88a6a";
-    statusEl.textContent = "✗ Failed to submit. Check your internet connection and try again.";
-    btn.textContent = "📤 Try Again";
-    btn.disabled = false;
-  }
-}
 
 // SETTINGS & API KEY
 function saveApiKey(){
